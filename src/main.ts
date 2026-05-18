@@ -1,9 +1,11 @@
 import "./styles.css";
 import { parseExif } from "./exif";
 import { generateInference } from "./inference";
+import { analyzeProvenance } from "./provenance";
 import { looksLikeHeic, heicToJpegBlob } from "./heic";
 import { buildHero } from "./ui/hero";
 import { renderResult, type ResultRender } from "./ui/result";
+import { buildProvenancePanel } from "./ui/provenance";
 import { buildDownloadPanel } from "./ui/download";
 import { buildEmailCapture } from "./ui/email-capture";
 import { buildFooter } from "./ui/footer";
@@ -43,8 +45,13 @@ async function handleFile(file: File): Promise<void> {
           );
         })
       : Promise.resolve<Blob>(file);
+    const provenancePromise = analyzeProvenance(file);
 
-    const [exif, previewBlob] = await Promise.all([exifPromise, previewPromise]);
+    const [exif, previewBlob, provenance] = await Promise.all([
+      exifPromise,
+      previewPromise,
+      provenancePromise,
+    ]);
 
     const inference = generateInference(exif);
 
@@ -57,6 +64,12 @@ async function handleFile(file: File): Promise<void> {
     const result = renderResult({ file, previewBlob, exif, inference });
     lastResult = result;
     resultsContainer.appendChild(result.element);
+
+    const provenanceWrap = document.createElement("section");
+    provenanceWrap.className = "container-page pb-2";
+    provenanceWrap.appendChild(buildProvenancePanel(provenance));
+    resultsContainer.appendChild(provenanceWrap);
+
     resultsContainer.appendChild(buildDownloadPanel(file));
     resultsContainer.appendChild(buildEmailCapture(SUBSCRIBE_ENDPOINT));
 
