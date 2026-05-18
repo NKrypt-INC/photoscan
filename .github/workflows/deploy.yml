@@ -32,6 +32,8 @@ jobs:
         run: npm run typecheck
 
       - name: Build
+        env:
+          VITE_SUBSCRIBE_ENDPOINT: ${{ vars.VITE_SUBSCRIBE_ENDPOINT }}
         run: npm run build
 
       - name: Deploy to Cloudflare Pages
