@@ -40,7 +40,7 @@ export function buildHero(onFile: (file: File) => void): HeroHandle {
   input.type = "file";
   input.accept = ACCEPTED;
   input.className = "sr-only";
-  input.setAttribute("aria-hidden", "true");
+  input.tabIndex = -1;
 
   const inner = document.createElement("div");
   inner.className = "pointer-events-none";
