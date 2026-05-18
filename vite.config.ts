@@ -9,7 +9,7 @@ export default defineConfig({
       output: {
         manualChunks: {
           leaflet: ["leaflet"],
-          exifr: ["exifr"],
+          exifreader: ["exifreader"],
         },
       },
     },

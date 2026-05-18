@@ -63,6 +63,7 @@ async function handleFile(file: File): Promise<void> {
     setTimeout(() => {
       result.element.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 80);
+    hero.setError(null);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     hero.setError(`Could not read this file: ${message}`);

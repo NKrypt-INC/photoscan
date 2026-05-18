@@ -1,31 +1,78 @@
-import exifr from "exifr";
+import ExifReader from "exifreader";
 import type { ExifResult, GpsPoint } from "./types";
 
-// exifr's typings are strict about per-segment shape; pass `true` to enable everything.
-// We use `unknown` and let exifr accept the runtime object.
-const FULL_OPTIONS: unknown = {
-  tiff: true,
-  exif: true,
-  gps: true,
-  interop: false,
-  xmp: true,
-  icc: true,
-  iptc: true,
-  jfif: true,
-  ihdr: true,
-  mergeOutput: true,
-  translateKeys: true,
-  translateValues: true,
-  reviveValues: true,
-  sanitize: true,
-};
+type ReaderTags = Record<string, unknown>;
 
-function softwareLooksLikeIos(software: string | null, make: string | null): string | null {
+interface TagValue {
+  description?: string | number;
+  value?: unknown;
+}
+
+function pickString(tag: TagValue | undefined): string | null {
+  if (!tag) return null;
+  const d = tag.description;
+  if (typeof d === "string" && d.length > 0) return d.trim();
+  if (typeof d === "number" && Number.isFinite(d)) return String(d);
+  const v = tag.value;
+  if (typeof v === "string" && v.length > 0) return v.trim();
+  return null;
+}
+
+function pickNumber(tag: TagValue | undefined): number | null {
+  if (!tag) return null;
+  const d = tag.description;
+  if (typeof d === "number" && Number.isFinite(d)) return d;
+  if (typeof d === "string") {
+    const m = d.match(/-?\d+(\.\d+)?/);
+    if (m) {
+      const n = parseFloat(m[0]);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  const v = tag.value;
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (Array.isArray(v) && v.length > 0 && typeof v[0] === "number") return v[0];
+  return null;
+}
+
+function parseExifDate(s: string | null, subSec?: string | null, offset?: string | null): Date | null {
+  if (!s) return null;
+  // Common EXIF format: "YYYY:MM:DD HH:MM:SS"
+  const m = s.match(/^(\d{4})[:\-](\d{2})[:\-](\d{2})[T ](\d{2}):(\d{2}):(\d{2})/);
+  if (!m) {
+    const fallback = new Date(s);
+    return Number.isNaN(fallback.getTime()) ? null : fallback;
+  }
+  const iso = `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}${subSec ? "." + subSec.padEnd(3, "0").slice(0, 3) : ""}${offset ?? ""}`;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function parseTzOffsetMinutes(s: string | null | undefined): number | null {
+  if (!s) return null;
+  const m = s.match(/^([+-])(\d{2}):?(\d{2})$/);
+  if (!m) return null;
+  return (m[1] === "-" ? -1 : 1) * (parseInt(m[2], 10) * 60 + parseInt(m[3], 10));
+}
+
+function pickGps(tags: ReaderTags): GpsPoint | null {
+  const gps = (tags as unknown as { gps?: Record<string, TagValue> }).gps;
+  if (!gps) return null;
+  const lat = pickNumber(gps.Latitude);
+  const lon = pickNumber(gps.Longitude);
+  if (lat === null || lon === null) return null;
+  if ((lat === 0 && lon === 0) || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const altitude = pickNumber(gps.Altitude);
+  return { lat, lon, altitude: altitude ?? undefined };
+}
+
+function detectOsHint(software: string | null, make: string | null): string | null {
   if (!software && !make) return null;
-  const sw = (software ?? "").toLowerCase();
+  const sw = (software ?? "").trim();
   const mk = (make ?? "").toLowerCase();
-  if (mk.includes("apple") || sw.match(/\bios\s?\d/) || sw.includes("iphone")) {
-    const v = sw.match(/(\d{1,2}\.\d(?:\.\d)?)/);
+  // iPhones store iOS version in Software as e.g. "26.3.1" or "iOS 17.5.1"
+  if (mk.includes("apple")) {
+    const v = sw.match(/(\d{1,2}(?:\.\d{1,2}){1,2})/);
     return v ? `iOS ${v[1]}` : "iOS";
   }
   if (mk.includes("google") || mk.includes("samsung") || mk.includes("xiaomi") || mk.includes("oneplus")) {
@@ -35,117 +82,125 @@ function softwareLooksLikeIos(software: string | null, make: string | null): str
   return null;
 }
 
-function pickGps(raw: Record<string, unknown>): GpsPoint | null {
-  const lat = (raw.latitude as number | undefined) ?? (raw.GPSLatitude as number | undefined);
-  const lon = (raw.longitude as number | undefined) ?? (raw.GPSLongitude as number | undefined);
-  if (typeof lat !== "number" || typeof lon !== "number") return null;
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-  if (lat === 0 && lon === 0) return null;
-  const altitude = (raw.GPSAltitude as number | undefined) ?? (raw.altitude as number | undefined);
-  const dop = raw.GPSDOP as number | undefined;
-  const accuracyMeters = typeof dop === "number" ? Math.round(dop * 5) : undefined;
-  return { lat, lon, altitude, accuracyMeters };
-}
-
-function parseTimezoneOffset(raw: Record<string, unknown>): number | null {
-  const offset = raw.OffsetTimeOriginal ?? raw.OffsetTime ?? raw.OffsetTimeDigitized;
-  if (typeof offset !== "string") return null;
-  const m = offset.match(/^([+-])(\d{2}):?(\d{2})$/);
-  if (!m) return null;
-  const sign = m[1] === "-" ? -1 : 1;
-  return sign * (parseInt(m[2], 10) * 60 + parseInt(m[3], 10));
-}
-
-function pickDate(raw: Record<string, unknown>): Date | null {
-  const candidates = [
-    raw.DateTimeOriginal,
-    raw.CreateDate,
-    raw.DateTime,
-    raw.ModifyDate,
-  ];
-  for (const c of candidates) {
-    if (c instanceof Date && !Number.isNaN(c.getTime())) return c;
-    if (typeof c === "string") {
-      const d = new Date(c);
-      if (!Number.isNaN(d.getTime())) return d;
-    }
-  }
-  return null;
+function shutterFromExposure(tag: TagValue | undefined): string | null {
+  if (!tag) return null;
+  const d = tag.description;
+  if (typeof d === "string" && d.includes("/")) return d.includes("s") ? d : `${d}s`;
+  const n = pickNumber(tag);
+  if (n === null || n <= 0) return null;
+  if (n >= 1) return `${n.toFixed(1)}s`;
+  return `1/${Math.round(1 / n)}s`;
 }
 
 export async function parseExif(file: File | Blob, filename: string, mimeType: string): Promise<ExifResult> {
-  let raw: Record<string, unknown> = {};
+  const buf = await file.arrayBuffer();
+  let tags: ReaderTags | null = null;
   try {
-    const parsed = (await exifr.parse(file as Blob, FULL_OPTIONS as Parameters<typeof exifr.parse>[1])) as Record<string, unknown> | undefined;
-    if (parsed) raw = parsed;
+    tags = ExifReader.load(buf, { expanded: true, includeUnknown: false }) as unknown as ReaderTags;
   } catch {
-    raw = {};
+    tags = null;
   }
 
-  const cameraMake = (raw.Make as string | undefined) ?? null;
-  const cameraModel = (raw.Model as string | undefined) ?? null;
-  const lensModel = ((raw.LensModel ?? raw.Lens ?? raw.LensInfo) as string | undefined) ?? null;
-  const software = (raw.Software as string | undefined) ?? null;
+  const exif = (tags as unknown as { exif?: Record<string, TagValue> })?.exif ?? {};
+  const file_ = (tags as unknown as { file?: Record<string, TagValue> })?.file ?? {};
+  const iptc = (tags as unknown as { iptc?: Record<string, TagValue> })?.iptc ?? {};
+  const xmp = (tags as unknown as { xmp?: Record<string, TagValue> })?.xmp ?? {};
+
+  const cameraMake = pickString(exif.Make);
+  const cameraModel = pickString(exif.Model);
+  const lensModel = pickString(exif.LensModel) || pickString(exif.Lens) || pickString(exif.LensInfo);
+  const software = pickString(exif.Software);
+
+  const dateStr =
+    pickString(exif.DateTimeOriginal) ??
+    pickString(exif.CreateDate) ??
+    pickString(exif.DateTime) ??
+    pickString(exif.ModifyDate);
+  const subSec =
+    pickString(exif.SubSecTimeOriginal) ??
+    pickString(exif.SubSecTime);
+  const tzString =
+    pickString(exif.OffsetTimeOriginal) ??
+    pickString(exif.OffsetTime) ??
+    pickString(exif.OffsetTimeDigitized);
+
+  const takenAt = parseExifDate(dateStr, subSec ?? undefined, tzString ?? undefined);
+
+  const hasAnyExif =
+    Object.keys(exif).length > 0 ||
+    Object.keys(iptc).length > 0 ||
+    Object.keys(xmp).length > 0 ||
+    pickGps(tags ?? ({} as ReaderTags)) !== null;
+
+  const widthFromFile = pickNumber(file_["Image Width"]) ?? pickNumber(file_.ImageWidth);
+  const heightFromFile = pickNumber(file_["Image Height"]) ?? pickNumber(file_.ImageHeight);
 
   const result: ExifResult = {
     filename,
-    byteSize: (file as File).size ?? 0,
+    byteSize: (file as File).size ?? buf.byteLength,
     mimeType,
-    hasAnyExif: Object.keys(raw).length > 0,
+    hasAnyExif,
 
-    gps: pickGps(raw),
+    gps: pickGps(tags ?? ({} as ReaderTags)),
 
-    takenAt: pickDate(raw),
-    timezoneOffsetMinutes: parseTimezoneOffset(raw),
+    takenAt,
+    timezoneOffsetMinutes: parseTzOffsetMinutes(tzString),
 
-    cameraMake: cameraMake?.toString().trim() || null,
-    cameraModel: cameraModel?.toString().trim() || null,
-    lensModel: lensModel?.toString().trim() || null,
-    software: software?.toString().trim() || null,
-    iosOrAndroidHint: softwareLooksLikeIos(software ?? null, cameraMake ?? null),
+    cameraMake,
+    cameraModel,
+    lensModel,
+    software,
+    iosOrAndroidHint: detectOsHint(software, cameraMake),
 
-    imageWidth: (raw.ExifImageWidth as number | undefined) ?? (raw.ImageWidth as number | undefined) ?? null,
-    imageHeight: (raw.ExifImageHeight as number | undefined) ?? (raw.ImageHeight as number | undefined) ?? null,
-    orientation: (raw.Orientation as number | undefined) ?? null,
-    colorSpace: (raw.ColorSpace as string | undefined)?.toString() ?? null,
+    imageWidth: pickNumber(exif.PixelXDimension) ?? pickNumber(exif.ExifImageWidth) ?? widthFromFile,
+    imageHeight: pickNumber(exif.PixelYDimension) ?? pickNumber(exif.ExifImageHeight) ?? heightFromFile,
+    orientation: pickNumber(exif.Orientation),
+    colorSpace: pickString(exif.ColorSpace),
 
     exposure: {
-      aperture: (raw.FNumber as number | undefined) ?? (raw.ApertureValue as number | undefined) ?? null,
-      shutter: (raw.ExposureTime as number | undefined) !== undefined
-        ? formatShutter(raw.ExposureTime as number)
-        : null,
-      iso: (raw.ISO as number | undefined) ?? null,
-      focalLength: (raw.FocalLength as number | undefined) ?? null,
+      aperture: pickNumber(exif.FNumber) ?? pickNumber(exif.ApertureValue),
+      shutter: shutterFromExposure(exif.ExposureTime),
+      iso: pickNumber(exif.ISOSpeedRatings) ?? pickNumber(exif.PhotographicSensitivity),
+      focalLength: pickNumber(exif.FocalLength),
     },
 
-    copyright: (raw.Copyright as string | undefined) ?? null,
-    artist: ((raw.Artist ?? raw.Creator) as string | undefined) ?? null,
+    copyright: pickString(exif.Copyright),
+    artist: pickString(exif.Artist) ?? pickString(exif.Creator),
 
-    rawKeys: Object.keys(raw),
+    rawKeys: [
+      ...Object.keys(exif),
+      ...Object.keys(iptc).map((k) => `iptc:${k}`),
+      ...Object.keys(xmp).map((k) => `xmp:${k}`),
+    ],
   };
 
   return result;
 }
 
-function formatShutter(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds <= 0) return "";
-  if (seconds >= 1) return `${seconds.toFixed(1)}s`;
-  const denom = Math.round(1 / seconds);
-  return `1/${denom}s`;
-}
+const SENSITIVE_KEY_RE = /^(GPS|Make|Model|DateTimeOriginal|DateTime|CreateDate|Software|LensModel|Lens|Artist|Creator|Copyright|OffsetTime|SerialNumber|HostComputer|BodySerialNumber)/i;
 
 export async function verifyZeroExif(blob: Blob): Promise<{ clean: boolean; keys: string[] }> {
   try {
-    const parsed = (await exifr.parse(blob, FULL_OPTIONS as Parameters<typeof exifr.parse>[1])) as Record<string, unknown> | undefined;
-    if (!parsed) return { clean: true, keys: [] };
-    const keys = Object.keys(parsed).filter((k) => {
-      const v = parsed[k];
-      return v !== undefined && v !== null && !(typeof v === "string" && v.length === 0);
-    });
-    const sensitiveLeak = keys.some((k) =>
-      /^(GPS|Make|Model|DateTimeOriginal|DateTime|CreateDate|Software|LensModel|Lens|Artist|Copyright|OffsetTime|SerialNumber|HostComputer|BodySerialNumber)/i.test(k),
-    );
-    return { clean: !sensitiveLeak, keys };
+    const buf = await blob.arrayBuffer();
+    const tags = ExifReader.load(buf, { expanded: true, includeUnknown: false }) as unknown as ReaderTags;
+    const ns = tags as Record<string, Record<string, unknown> | undefined>;
+    const sections: Array<[string, Record<string, unknown> | undefined]> = [
+      ["exif", ns.exif],
+      ["gps", ns.gps],
+      ["iptc", ns.iptc],
+      ["xmp", ns.xmp],
+    ];
+    const offending: string[] = [];
+    for (const [prefix, section] of sections) {
+      if (!section) continue;
+      for (const key of Object.keys(section)) {
+        if (key === "_raw" || key === "about") continue;
+        if (prefix === "gps" || SENSITIVE_KEY_RE.test(key)) {
+          offending.push(`${prefix}:${key}`);
+        }
+      }
+    }
+    return { clean: offending.length === 0, keys: offending };
   } catch {
     return { clean: true, keys: [] };
   }
