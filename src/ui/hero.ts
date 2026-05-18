@@ -1,6 +1,7 @@
 export interface HeroHandle {
   element: HTMLElement;
   setBusy(busy: boolean): void;
+  setStatus(message: string): void;
   setError(message: string | null): void;
 }
 
@@ -79,7 +80,10 @@ export function buildHero(onFile: (file: File) => void): HeroHandle {
 
   const handleFile = (file: File | null | undefined) => {
     if (!file) return;
-    if (!file.type && !/\.(jpe?g|png|heic|heif|tif{1,2}|webp)$/i.test(file.name)) {
+    const looksLikeImage =
+      (file.type && file.type.startsWith("image/")) ||
+      /\.(jpe?g|png|heic|heif|tif{1,2}|webp|gif|bmp)$/i.test(file.name);
+    if (!looksLikeImage) {
       status.textContent = "That file does not look like a photo. Try a JPG, PNG, or HEIC.";
       status.className = "mt-4 min-h-[1.5rem] text-sm text-alarm";
       return;
@@ -126,6 +130,10 @@ export function buildHero(onFile: (file: File) => void): HeroHandle {
       } else {
         dropZone.classList.remove("opacity-60", "pointer-events-none");
       }
+    },
+    setStatus(message) {
+      status.textContent = message;
+      status.className = "mt-4 min-h-[1.5rem] text-sm text-ink-300";
     },
     setError(message) {
       if (!message) {

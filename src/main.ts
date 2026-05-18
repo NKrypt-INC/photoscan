@@ -28,10 +28,23 @@ async function handleFile(file: File): Promise<void> {
   hero.setError(null);
   try {
     const isHeic = looksLikeHeic(file);
-    const [exif, previewBlob] = await Promise.all([
-      parseExif(file, file.name, file.type || (isHeic ? "image/heic" : "")),
-      isHeic ? heicToJpegBlob(file, 0.85) : Promise.resolve<Blob>(file),
-    ]);
+    if (isHeic) {
+      hero.setStatus(
+        `Converting HEIC in your browser, this can take 5 to 20 seconds on a phone-sized photo...`,
+      );
+    }
+
+    const exifPromise = parseExif(file, file.name, file.type || (isHeic ? "image/heic" : ""));
+    const previewPromise: Promise<Blob> = isHeic
+      ? heicToJpegBlob(file, 0.85).catch((err) => {
+          console.error("HEIC conversion failed", err);
+          throw new Error(
+            "Could not convert this HEIC. Your iPhone may have stored it in a variant Safari does not expose to the web. On iPhone, Settings, Camera, Formats, set to Most Compatible, retake the photo, try again.",
+          );
+        })
+      : Promise.resolve<Blob>(file);
+
+    const [exif, previewBlob] = await Promise.all([exifPromise, previewPromise]);
 
     const inference = generateInference(exif);
 
