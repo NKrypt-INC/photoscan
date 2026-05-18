@@ -62,6 +62,36 @@ function staggerReveal(rows: HTMLElement[]) {
   });
 }
 
+function humanOrientation(o: number | null): string | null {
+  if (o === null) return null;
+  switch (o) {
+    case 1:
+      return "Landscape, upright";
+    case 2:
+      return "Landscape, mirrored";
+    case 3:
+      return "Upside down";
+    case 4:
+      return "Landscape, mirrored upside down";
+    case 5:
+      return "Portrait, rotated counterclockwise, mirrored";
+    case 6:
+      return "Portrait (camera held vertically)";
+    case 7:
+      return "Portrait, rotated clockwise, mirrored";
+    case 8:
+      return "Portrait (camera rotated other way)";
+    default:
+      return null;
+  }
+}
+
+function humanMegapixels(w: number, h: number): string {
+  const mp = (w * h) / 1_000_000;
+  if (mp < 1) return `${(mp).toFixed(2)} MP`;
+  return `${mp.toFixed(1)} MP`;
+}
+
 export function renderResult(args: ResultArgs): ResultRender {
   const { file, previewBlob, exif, inference } = args;
   let mapHandle: MapHandle | null = null;
@@ -250,22 +280,28 @@ export function renderResult(args: ResultArgs): ResultRender {
     rowsToReveal.push(devicePanel);
   }
 
-  // Software / edit trail
-  if (exif.software || exif.artist || exif.copyright || exif.colorSpace || exif.orientation !== null) {
+  // File details
+  const looksLikeOsVersion = exif.software ? /^\d{1,2}\.\d{1,2}(\.\d+)?$/.test(exif.software.trim()) : false;
+  const editorSoftware = exif.software && !looksLikeOsVersion ? exif.software : null;
+  const orientationLabel = humanOrientation(exif.orientation);
+  const dimensions =
+    exif.imageWidth && exif.imageHeight
+      ? `${exif.imageWidth.toLocaleString()} x ${exif.imageHeight.toLocaleString()} (${humanMegapixels(exif.imageWidth, exif.imageHeight)})`
+      : null;
+  if (editorSoftware || exif.artist || exif.copyright || orientationLabel || dimensions) {
     const editPanel = document.createElement("div");
     editPanel.className = "panel p-4 sm:p-5";
     const eyebrow = document.createElement("div");
     eyebrow.className = "label-eyebrow";
-    eyebrow.textContent = "Who edited it, and how";
+    eyebrow.textContent = "File details";
     const dl = document.createElement("dl");
     dl.className = "mt-3 grid grid-cols-2 gap-4 data-line";
     const fields: Array<[string, string | null]> = [
-      ["Software", exif.software],
+      ["Editing software", editorSoftware],
       ["Artist", exif.artist],
       ["Copyright", exif.copyright],
-      ["Color space", exif.colorSpace],
-      ["Orientation", exif.orientation !== null ? String(exif.orientation) : null],
-      ["Dimensions", exif.imageWidth && exif.imageHeight ? `${exif.imageWidth} x ${exif.imageHeight}` : null],
+      ["Orientation", orientationLabel],
+      ["Dimensions", dimensions],
     ];
     for (const [label, value] of fields) {
       if (!value) continue;
