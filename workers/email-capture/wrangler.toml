@@ -1,0 +1,24 @@
+name = "photoscan-email-capture"
+main = "src/index.ts"
+compatibility_date = "2025-04-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Allowed referrer origins for CORS. Override via `wrangler secret put` or vars.
+[vars]
+ALLOWED_ORIGINS = "https://photoscan.nkrypt.com,https://scanner.nkrypt.com,http://localhost:5173"
+RESEND_AUDIENCE_NAME = "nkrypt-privacy-brief"
+
+# Secrets (set with `wrangler secret put`):
+#   RESEND_API_KEY       Resend API key with audiences:write
+#   RESEND_AUDIENCE_ID   The UUID of the nkrypt-privacy-brief audience in Resend
+
+# Optional custom route. Once Cloudflare Pages is wired up, the Worker can be
+# bound under the same hostname as a Pages Function instead. Until then, route
+# the Worker to its own subdomain (api.photoscan.nkrypt.com) and point the
+# frontend VITE_SUBSCRIBE_ENDPOINT at it.
+# [[routes]]
+# pattern = "api.photoscan.nkrypt.com/*"
+# zone_name = "nkrypt.com"
+
+[observability]
+enabled = true

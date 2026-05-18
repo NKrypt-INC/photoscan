@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body {
+    background-color: theme("colors.ink.950");
+    color: theme("colors.ink.100");
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: "ss01" on, "cv11" on;
+  }
+  ::selection {
+    background: theme("colors.accent.DEFAULT");
+    color: theme("colors.ink.950");
+  }
+}
+
+@layer components {
+  .container-page {
+    @apply mx-auto w-full max-w-container px-5 sm:px-8;
+  }
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-5 py-3 text-sm font-semibold text-ink-950 transition hover:bg-accent-bright focus:outline-none focus:ring-2 focus:ring-accent/60 focus:ring-offset-2 focus:ring-offset-ink-950 disabled:opacity-50;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-ink-700 px-4 py-2.5 text-sm font-medium text-ink-200 transition hover:border-ink-500 hover:text-ink-50;
+  }
+  .panel {
+    @apply rounded-2xl border border-ink-800 bg-ink-900/70 backdrop-blur-sm;
+  }
+  .panel-hairline {
+    @apply border border-ink-800;
+  }
+  .label-eyebrow {
+    @apply font-mono text-[11px] uppercase tracking-[0.18em] text-ink-400;
+  }
+  .data-line dt {
+    @apply font-mono text-[11px] uppercase tracking-[0.16em] text-ink-400;
+  }
+  .data-line dd {
+    @apply mt-1 font-mono text-sm text-ink-100;
+  }
+  .reveal-row {
+    @apply animate-rise;
+  }
+  .drop-zone {
+    @apply relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-ink-700 bg-ink-900/60 px-6 py-14 text-center transition hover:border-accent/60 hover:bg-ink-900/80;
+  }
+  .drop-zone.is-drag {
+    @apply border-accent bg-ink-900;
+  }
+  .pill {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-ink-700 bg-ink-900 px-2.5 py-1 font-mono text-[10px] uppercase tracking-widest text-ink-300;
+  }
+  .accent-dot {
+    @apply inline-block h-1.5 w-1.5 rounded-full bg-accent animate-pulseDot;
+  }
+}
+
+/* Leaflet dark cosmetic tweaks */
+.leaflet-container {
+  background: #0b0f17 !important;
+  border-radius: 14px;
+  font-family: theme("fontFamily.sans");
+}
+.leaflet-control-attribution {
+  background: rgba(11, 15, 23, 0.75) !important;
+  color: #8590ad !important;
+}
+.leaflet-control-attribution a {
+  color: #b7bdd0 !important;
+}
+.leaflet-bar a,
+.leaflet-bar a:hover {
+  background-color: #111726 !important;
+  color: #dde1ec !important;
+  border-color: #1a2236 !important;
+}
+.leaflet-tile-pane {
+  filter: brightness(0.85) contrast(1.05) saturate(0.85);
+}
