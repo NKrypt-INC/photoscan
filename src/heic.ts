@@ -5,20 +5,23 @@ export function looksLikeHeic(file: File): boolean {
   return t === "image/heic" || t === "image/heif" || t === "image/heic-sequence";
 }
 
-let heicLib: typeof import("heic2any") | null = null;
-async function ensureLib() {
+interface HeicToModule {
+  heicTo(args: { blob: Blob; type: string; quality?: number }): Promise<Blob>;
+}
+
+let heicLib: HeicToModule | null = null;
+async function ensureLib(): Promise<HeicToModule> {
   if (!heicLib) {
-    heicLib = (await import("heic2any")).default as unknown as typeof import("heic2any");
+    heicLib = (await import("heic-to/csp")) as unknown as HeicToModule;
   }
   return heicLib;
 }
 
 export async function heicToJpegBlob(file: File, quality = 0.92): Promise<Blob> {
   const lib = await ensureLib();
-  const out = await (lib as unknown as (opts: { blob: Blob; toType?: string; quality?: number }) => Promise<Blob | Blob[]>)({
+  return await lib.heicTo({
     blob: file,
-    toType: "image/jpeg",
+    type: "image/jpeg",
     quality,
   });
-  return Array.isArray(out) ? out[0] : out;
 }
