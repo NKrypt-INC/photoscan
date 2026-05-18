@@ -8,30 +8,48 @@ interface TagValue {
   value?: unknown;
 }
 
-function pickString(tag: TagValue | undefined): string | null {
-  if (!tag) return null;
-  const d = tag.description;
-  if (typeof d === "string" && d.length > 0) return d.trim();
-  if (typeof d === "number" && Number.isFinite(d)) return String(d);
-  const v = tag.value;
-  if (typeof v === "string" && v.length > 0) return v.trim();
+function pickString(tag: unknown): string | null {
+  if (tag === null || tag === undefined) return null;
+  if (typeof tag === "string") return tag.trim() || null;
+  if (typeof tag === "number" && Number.isFinite(tag)) return String(tag);
+  if (typeof tag === "object") {
+    const t = tag as TagValue;
+    const d = t.description;
+    if (typeof d === "string" && d.length > 0) return d.trim();
+    if (typeof d === "number" && Number.isFinite(d)) return String(d);
+    const v = t.value;
+    if (typeof v === "string" && v.length > 0) return v.trim();
+    if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  }
   return null;
 }
 
-function pickNumber(tag: TagValue | undefined): number | null {
-  if (!tag) return null;
-  const d = tag.description;
-  if (typeof d === "number" && Number.isFinite(d)) return d;
-  if (typeof d === "string") {
-    const m = d.match(/-?\d+(\.\d+)?/);
+function pickNumber(tag: unknown): number | null {
+  if (tag === null || tag === undefined) return null;
+  if (typeof tag === "number" && Number.isFinite(tag)) return tag;
+  if (typeof tag === "string") {
+    const m = tag.match(/-?\d+(\.\d+)?/);
     if (m) {
       const n = parseFloat(m[0]);
       if (Number.isFinite(n)) return n;
     }
+    return null;
   }
-  const v = tag.value;
-  if (typeof v === "number" && Number.isFinite(v)) return v;
-  if (Array.isArray(v) && v.length > 0 && typeof v[0] === "number") return v[0];
+  if (typeof tag === "object") {
+    const t = tag as TagValue;
+    const d = t.description;
+    if (typeof d === "number" && Number.isFinite(d)) return d;
+    if (typeof d === "string") {
+      const m = d.match(/-?\d+(\.\d+)?/);
+      if (m) {
+        const n = parseFloat(m[0]);
+        if (Number.isFinite(n)) return n;
+      }
+    }
+    const v = t.value;
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+    if (Array.isArray(v) && v.length > 0 && typeof v[0] === "number") return v[0];
+  }
   return null;
 }
 
@@ -82,10 +100,12 @@ function detectOsHint(software: string | null, make: string | null): string | nu
   return null;
 }
 
-function shutterFromExposure(tag: TagValue | undefined): string | null {
-  if (!tag) return null;
-  const d = tag.description;
-  if (typeof d === "string" && d.includes("/")) return d.includes("s") ? d : `${d}s`;
+function shutterFromExposure(tag: unknown): string | null {
+  if (tag === null || tag === undefined) return null;
+  if (typeof tag === "object") {
+    const d = (tag as TagValue).description;
+    if (typeof d === "string" && d.includes("/")) return d.includes("s") ? d : `${d}s`;
+  }
   const n = pickNumber(tag);
   if (n === null || n <= 0) return null;
   if (n >= 1) return `${n.toFixed(1)}s`;
