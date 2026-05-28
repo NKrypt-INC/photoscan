@@ -20,13 +20,15 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   osv-scanner:
+    # OSV-Scanner via official Docker image. No install dance, no GHAS
+    # dependency, no SARIF upload. Findings surface in the job log.
     name: OSV-Scanner
-    permissions:
-      contents: read
-      security-events: write
-    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.2.4
-    with:
-      scan-args: |-
-        --recursive
-        --skip-git
-        ./
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/google/osv-scanner:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan
+        # `scan source` enumerates manifests/lockfiles; OSV-Scanner v2 dropped
+        # the standalone --skip-git flag.
+        run: /osv-scanner scan source --recursive ./
