@@ -12,7 +12,7 @@ jobs:
     name: secrets in history
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       # Use the gitleaks binary directly, not gitleaks-action@v2, which now
@@ -34,7 +34,7 @@ jobs:
     container:
       image: ghcr.io/google/osv-scanner:latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Scan
         # `scan source` enumerates manifests/lockfiles; OSV-Scanner v2 dropped
         # the standalone --skip-git flag.
